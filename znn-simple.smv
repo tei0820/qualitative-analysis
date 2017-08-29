@@ -1,0 +1,136 @@
+MODULE main
+ VAR
+------- Controlled variables --------
+	serverLoad:{low, notLow};
+	responseTime:{fast, notFast};
+	QoC:{high, notHigh};
+------- Tactics --------
+	actionEVP1: {increment,decrement,none};
+	actionEVP2: {switchToHigh,switchToLow,none};
+	actionEVP3: {switchToFast,switchToSlow,none};
+	actionEVP4: {switchToMM,switchToText,none};
+------- E ----------
+	sSMe: severLoadSM(serverLoad,actionEVP1,actionEVP2);
+	rSMe: responseTimeSM(responseTime,actionEVP2,actionEVP3,actionEVP4);
+	qSMe: QoSSM(QoC,actionEVP4);
+------- S ----------
+	al1: AL1(serverLoad,actionEVP1);
+	al2: AL2(serverLoad,responseTime,actionEVP2);
+  d1: Dummy(actionEVP3);
+  d2: Dummy(actionEVP4);
+
+ ASSIGN
+------ Current values of controlled variables
+	init(serverLoad) := notLow;
+	init(responseTime) := notFast;
+	init(QoC) := high;
+
+	init(actionEVP1) := none;
+	init(actionEVP2) := none;
+	init(actionEVP3) := none;
+	init(actionEVP4) := none;
+
+-- The desired level of the quality attributes
+SPEC EF(serverLoad=low & responseTime=fast & QoC=high);
+
+---- E -----
+MODULE severLoadSM(serverLoad,actionEVP1,actionEVP2)
+ ASSIGN
+	next(serverLoad):=
+		case
+     serverLoad=notLow & actionEVP1=decrement : notLow;
+     serverLoad=notLow & actionEVP1=increment : {low,notLow};
+     serverLoad=low & actionEVP1=decrement : {low,notLow};
+     serverLoad=low & actionEVP1=increment : low;
+
+		 serverLoad=notLow & actionEVP2=switchToLow : {low,notLow};
+		 serverLoad=notLow & actionEVP2=switchToHigh : notLow;
+		 serverLoad=low & actionEVP2=switchToLow : low;
+		 serverLoad=low & actionEVP2=switchToHigh : {low,notLow};
+		 TRUE:	serverLoad;
+		esac;
+MODULE responseTimeSM(responseTime,actionEVP2,actionEVP3,actionEVP4)
+ ASSIGN
+	next(responseTime):=
+		case
+		 responseTime=fast & actionEVP2=switchToLow : {fast,notFast};
+		 responseTime=fast & actionEVP2=switchToHigh : fast;
+		 responseTime=notFast & actionEVP2=switchToLow : notFast;
+		 responseTime=notFast & actionEVP2=switchToHigh : {fast,notFast};
+
+		 responseTime=fast & actionEVP3=switchToFast : fast;
+		 responseTime=fast & actionEVP3=switchToSlow : {fast,notFast};
+		 responseTime=notFast & actionEVP3=switchToFast : {fast,notFast};
+		 responseTime=notFast & actionEVP3=switchToSlow : notFast;
+
+		 responseTime=fast & actionEVP4=switchToMM: {fast,notFast};
+		 responseTime=fast & actionEVP4=switchToText: fast;
+		 responseTime=notFast & actionEVP4=switchToMM: notFast;
+		 responseTime=notFast & actionEVP4=switchToText: {fast,notFast};
+
+		 TRUE : responseTime;
+		esac;
+MODULE QoSSM(QoC,actionEVP4)
+ ASSIGN
+	next(QoC):=
+		case
+		 QoC=high & actionEVP4=switchToMM : high;
+		 QoC=high & actionEVP4=switchToText : notHigh;
+		 QoC=notHigh & actionEVP4=switchToMM : high;
+		 QoC=notHigh & actionEVP4=switchToText : notHigh;
+		 TRUE : QoC;
+		esac;
+
+---- S -----
+MODULE AL1(serverLoad,action)
+ VAR
+	poolSize:{maximum,notMax}; -- Manipulation variable
+ ASSIGN
+--- Current value of manipulation variable
+	init(poolSize):= notMax;
+	next(poolSize):=
+		case
+		 poolSize=notMax & action=increment : {maximum, notMax};
+		 poolSize=maximum & action=increment: maximum;
+		 poolSize=notMax & action=decrement : notMax;
+		 poolSize=maximum & action=decrement: notMax;
+		 TRUE:	poolSize;
+		esac;
+	next(action):=
+		case
+		 poolSize=maximum & serverLoad=low : none;
+		 poolSize=maximum & serverLoad=notLow : none;
+		 poolSize=notMax & serverLoad=low : none;
+		 poolSize=notMax & serverLoad=notLow : increment;
+		 TRUE: action;
+		esac;
+MODULE AL2(serverLoad,responseTime,action)
+  VAR
+    cRate:{high, low};
+  ASSIGN
+    init(cRate):=high;
+    next(cRate):=
+      case
+    	  cRate=low & action=switchToHigh : high;
+    	  cRate=high & action=switchToLow : low;
+    	  TRUE : cRate;
+      esac;
+    next(action):=
+      case
+        cRate=low & responseTime=fast & serverLoad=low : none;
+        cRate=high & responseTime=fast & serverLoad=low : none;
+        cRate=low & responseTime=notFast & serverLoad=low : switchToHigh;
+        cRate=high & responseTime=notFast & serverLoad=low : none;
+        cRate=low & responseTime=fast & serverLoad=notLow : none;
+        cRate=high & responseTime=fast & serverLoad=notLow : none;
+        cRate=low & responseTime=notFast & serverLoad=notLow : none;
+        cRate=high & responseTime=notFast & serverLoad=notLow : none;
+        TRUE : action;
+      esac;
+
+MODULE Dummy(action)
+  ASSIGN
+    next(action):=
+      case
+        TRUE:	action;
+      esac;
